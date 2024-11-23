@@ -1,0 +1,40 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      width: 200px;
+      padding: 10px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .toggle-container label {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <h3>Adaptive Padding Defense</h3>
+  <div class="toggle-container">
+    <label for="enableToggle">Extension Enabled:</label>
+    <input type="checkbox" id="enableToggle" />
+  </div>
+  <label for="paddingIntensity">Padding Intensity:</label>
+  <input type="range" id="paddingIntensity" min="1" max="5" step="1" />
+  <span id="intensityValue">3</span>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
