@@ -17,18 +17,7 @@
     },
     "condition": {
       "urlFilter": "*",
-      "resourceTypes": [
-        "main_frame",
-        "sub_frame",
-        "stylesheet",
-        "script",
-        "image",
-        "font",
-        "object",
-        "xmlhttprequest",
-        "ping",
-        "websocket"
-      ]
+      "resourceTypes": ["xmlhttprequest", "sub_frame"]
     }
   }
 ]

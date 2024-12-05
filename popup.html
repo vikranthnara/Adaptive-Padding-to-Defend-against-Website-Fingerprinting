@@ -34,7 +34,15 @@
   <label for="paddingIntensity">Padding Intensity:</label>
   <input type="range" id="paddingIntensity" min="1" max="5" step="1" />
   <span id="intensityValue">3</span>
-  
+  <h1>Performance Metrics</h1>
+  <div class="metric">Dummy Packets Sent: <span id="dummyPacketsSent">0</span></div>
+  <div class="metric">Real Packets Intercepted: <span id="realPacketsIntercepted">0</span></div>
+  <h2>Time Spent in States (ms)</h2>
+  <div class="metric">IDLE: <span id="timeIdle">0</span></div>
+  <div class="metric">BURST: <span id="timeBurst">0</span></div>
+  <div class="metric">GAP: <span id="timeGap">0</span></div>
+  <button id="clearMetrics">Clear Metrics</button>
+
   <script src="popup.js"></script>
-</body>
+  </body>
 </html>

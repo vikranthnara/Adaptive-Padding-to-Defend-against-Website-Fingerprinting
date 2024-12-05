@@ -9,24 +9,9 @@ export function initializeHistograms(intensity = 3) {
 
 function createHistogram(intensity) {
   return [
-    {
-      range: [0, 100],
-      tokens: 10,
-      initialTokens: 10,
-      isInfinityBin: false
-    },
-    {
-      range: [100, 500],
-      tokens: 5,
-      initialTokens: 5,
-      isInfinityBin: false
-    },
-    {
-      range: [500, Infinity],
-      tokens: 2,
-      initialTokens: 2,
-      isInfinityBin: true
-    }
+    { range: [0, 50], tokens: intensity * 5, isInfinityBin: false },
+    { range: [50, 200], tokens: intensity * 3, isInfinityBin: false },
+    { range: [200, Infinity], tokens: intensity * 1, isInfinityBin: true },
   ];
 }
 

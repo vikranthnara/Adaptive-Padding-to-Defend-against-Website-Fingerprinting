@@ -22,6 +22,21 @@ let histograms;
 let extensionEnabled = true; // Default to enabled
 let paddingIntensity = 3; // Default intensity
 
+// Metrics object
+let metrics = {
+  dummyPacketsSent: 0,
+  realPacketsIntercepted: 0,
+  timeInStates: {
+    [STATE_IDLE]: 0,
+    [STATE_BURST]: 0,
+    [STATE_GAP]: 0
+  },
+  currentState: STATE_IDLE,
+  lastStateChange: Date.now(),
+  stateTransitions: []
+};
+
+
 // Initialize histograms based on padding intensity
 function initializeHistogramsBasedOnIntensity() {
   try {
@@ -54,24 +69,69 @@ const loadSettings = async () => {
   }
 };
 
+function initializeMetrics() {
+  chrome.storage.local.get('metrics', (data) => {
+    if (data.metrics) {
+      metrics = data.metrics;
+    }
+    // Update the last state change time to now
+    metrics.lastStateChange = Date.now();
+    metrics.currentState = state;
+    saveMetrics(); // Save the updated metrics
+  });
+}
+
+function saveMetrics() {
+  chrome.storage.local.set({ metrics }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error saving metrics:', chrome.runtime.lastError);
+    }
+  });
+}
+
+// Call the initialization function
+initializeMetrics();
+
 loadSettings();
 
 // Logging function
 function logStateTransition(oldState, newState, event) {
   const timestamp = new Date().toISOString();
+  
+  // Validate states
+  if (![STATE_IDLE, STATE_BURST, STATE_GAP].includes(newState)) {
+    console.error(`Invalid state transition to: ${newState}`);
+    return;
+  }
+
   console.log(`[${timestamp}] State transition: ${oldState} -> ${newState} (Event: ${event})`);
 
-  // Optional: Store in extension storage for debugging
-  chrome.storage.local.get(['stateLog'], function (result) {
+  // Update metrics atomically
+  chrome.storage.local.get(['metrics', 'stateLog'], function (result) {
     const logs = result.stateLog || [];
-    logs.push({
-      timestamp,
-      oldState,
-      newState,
-      event,
+    const currentMetrics = result.metrics || metrics;
+
+    // Calculate time in state
+    const now = Date.now();
+    const timeSpent = now - currentMetrics.lastStateChange;
+    metrics.timeInStates[oldState] += timeSpent;
+    metrics.lastStateChange = now;
+    metrics.currentState = newState;
+
+    // Update transition logs
+    logs.push({ timestamp, oldState, newState, event });
+
+    // Save both metrics and logs atomically
+    chrome.storage.local.set({
+      metrics: currentMetrics,
+      stateLog: logs.slice(-100)
+    }, () => {
+      // Update local metrics object
+      metrics = {...currentMetrics};
+      console.log('Updated metrics:', metrics);
     });
-    chrome.storage.local.set({ stateLog: logs.slice(-100) }); // Keep last 100 entries
   });
+  saveMetrics();
 }
 
 // Listen for messages from popup.js
@@ -116,6 +176,8 @@ function handleOutgoingRequest(details) {
     return {};
   }
   console.log('Outgoing request intercepted:', details.url);
+  metrics.realPacketsIntercepted += 1;
+  saveMetrics(); // Save updated metrics
 
   if (state === STATE_IDLE) {
     const prevState = state;
@@ -152,42 +214,35 @@ function handleIncomingResponse(details) {
     resetDelayTimer();
     scheduleNextDelay();
   }
-
   return;
 }
 
 // Schedule the next delay based on the current state
 function scheduleNextDelay() {
-  if (!histograms?.burstHistogram) {
-    console.error('Histograms not initialized');
+  if (!histograms?.burstHistogram || !extensionEnabled) {
     return;
   }
-  
-  if (!extensionEnabled) {
-    return;
-    
-  }
+
+  const MAX_IDLE_DELAY = 7000;
 
   if (state === STATE_BURST) {
     currentDelay = sampleDelay(histograms.burstHistogram);
   } else if (state === STATE_GAP) {
     currentDelay = sampleDelay(histograms.gapHistogram);
-  } else {
-    return; // Do not schedule delay in Idle state
+  } else if (state === STATE_IDLE) {
+    currentDelay = MAX_IDLE_DELAY; // Force periodic wake from idle
   }
-
-  console.log(`Scheduled next delay: ${currentDelay}ms in state ${state}`);
 
   if (currentDelay === Infinity) {
     const prevState = state;
     state = state === STATE_BURST ? STATE_IDLE : STATE_BURST;
     logStateTransition(prevState, state, 'Infinity bin');
-    if (state !== STATE_IDLE) {
-      scheduleNextDelay();
-    }
-  } else {
-    delayTimer = setTimeout(onDelayExpire, currentDelay);
+    currentDelay = state === STATE_IDLE ? MAX_IDLE_DELAY : 2500;
+
   }
+  delayTimer = setTimeout(onDelayExpire, currentDelay);
+  console.log(`Delay scheduled for ${currentDelay} milliseconds.`);
+
 }
 
 // Called when the delay timer expires
@@ -219,17 +274,23 @@ function resetDelayTimer() {
 }
 
 // Send a dummy packet
-function sendDummyPacket() {
-  const dummyUrl = 'https://httpbin.org/get';
-  
-  fetch(dummyUrl, { method: 'GET' })
-    .then((response) => {
-      console.log('Dummy packet sent successfully:', response.status);
-    })
-    .catch((error) => {
-      console.error('Failed to send dummy packet:', error);
+async function sendDummyPacket() {
+  if (!extensionEnabled) return;
+
+  try {
+    const dummyUrl = chrome.runtime.getURL('dummy.html');
+    await fetch(dummyUrl, {
+      method: 'GET',
+      cache: 'no-cache',
+      credentials: 'omit'
     });
-  console.log('Sending dummy packet at', new Date().toISOString());
+    
+    console.log('Dummy packet sent at', new Date().toISOString());
+    metrics.dummyPacketsSent += 1;
+    saveMetrics();
+  } catch (error) {
+    console.error('Failed to send dummy packet:', error);
+  }
 }
 
 // Sample a delay from the histogram
