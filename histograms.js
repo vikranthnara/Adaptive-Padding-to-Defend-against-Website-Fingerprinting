@@ -2,37 +2,56 @@
 
 export function initializeHistograms(intensity = 3) {
   return {
-    burstHistogram: createHistogram(intensity),
-    gapHistogram: createHistogram(intensity)
+    burstHistogram: createHistogram('burst', intensity),
+    gapHistogram: createHistogram('gap', intensity)
   };
 }
 
-function createHistogram(intensity) {
-  return [
-    { range: [0, 50], tokens: intensity * 5, isInfinityBin: false },
-    { range: [50, 200], tokens: intensity * 3, isInfinityBin: false },
-    { range: [200, Infinity], tokens: intensity * 1, isInfinityBin: true },
+function createHistogram(mode, intensity) {
+  // Base delays in milliseconds
+  const bins = [
+    { 
+      range: [1000, 2000],  // 1-2 seconds
+      tokens: getInitialTokensForBin(mode, 'short', intensity),
+      initialTokens: getInitialTokensForBin(mode, 'short', intensity)
+    },
+    { 
+      range: [2000, 3500],  // 2-3.5 seconds
+      tokens: getInitialTokensForBin(mode, 'medium', intensity),
+      initialTokens: getInitialTokensForBin(mode, 'medium', intensity)
+    },
+    { 
+      range: [3500, 5000],  // 3.5-5 seconds
+      tokens: getInitialTokensForBin(mode, 'long', intensity),
+      initialTokens: getInitialTokensForBin(mode, 'long', intensity)
+    }
   ];
+  return bins;
 }
 
-// Get initial token counts for a bin based on mode and intensity
-function getInitialTokensForBin(mode, range, intensity) {
-  // Adjust token counts based on intensity
+function getInitialTokensForBin(mode, binType, intensity) {
   let baseTokens;
 
-  if (range[1] === Infinity) {
-    baseTokens = 5; // Infinity bin has fewer tokens
-  } else {
-    if (mode === 'burst') {
-      baseTokens = 10;
-    } else if (mode === 'gap') {
-      baseTokens = 15;
-    }
-    // Apply intensity multiplier
-    baseTokens = baseTokens * intensity;
+  switch(binType) {
+    case 'short':
+      baseTokens = mode === 'burst' ? 10 : 5;
+      break;
+    case 'medium':
+      baseTokens = mode === 'burst' ? 6 : 8;
+      break;
+    case 'long':
+      baseTokens = mode === 'burst' ? 4 : 3;
+      break;
+    default:
+      baseTokens = 5;
   }
 
-  return baseTokens;
+  return Math.max(1, Math.floor(baseTokens * intensity));
 }
 
-// Export functions if needed
+export function refillTokens(histogram) {
+  histogram.forEach(bin => {
+    bin.tokens = bin.initialTokens;
+  });
+  return histogram;
+}
