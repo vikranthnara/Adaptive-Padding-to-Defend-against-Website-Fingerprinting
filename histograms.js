@@ -1,4 +1,8 @@
-// histograms.js
+export const DEFAULT_RANGES = [
+  { range: [1000, 2000], type: 'short' },
+  { range: [2000, 3500], type: 'medium' },
+  { range: [3500, 5000], type: 'long' }
+];
 
 export function initializeHistograms(intensity = 3) {
   return {
@@ -7,32 +11,18 @@ export function initializeHistograms(intensity = 3) {
   };
 }
 
-function createHistogram(mode, intensity) {
-  // Base delays in milliseconds
-  const bins = [
-    { 
-      range: [1000, 2000],  // 1-2 seconds
-      tokens: getInitialTokensForBin(mode, 'short', intensity),
-      initialTokens: getInitialTokensForBin(mode, 'short', intensity)
-    },
-    { 
-      range: [2000, 3500],  // 2-3.5 seconds
-      tokens: getInitialTokensForBin(mode, 'medium', intensity),
-      initialTokens: getInitialTokensForBin(mode, 'medium', intensity)
-    },
-    { 
-      range: [3500, 5000],  // 3.5-5 seconds
-      tokens: getInitialTokensForBin(mode, 'long', intensity),
-      initialTokens: getInitialTokensForBin(mode, 'long', intensity)
-    }
-  ];
-  return bins;
+function createHistogram(mode, intensity, customRanges = DEFAULT_RANGES) {
+  return customRanges.map(({ range, type }) => ({
+    range,
+    tokens: getInitialTokensForBin(mode, type, intensity),
+    initialTokens: getInitialTokensForBin(mode, type, intensity)
+  }));
 }
 
 function getInitialTokensForBin(mode, binType, intensity) {
   let baseTokens;
 
-  switch(binType) {
+  switch (binType) {
     case 'short':
       baseTokens = mode === 'burst' ? 10 : 5;
       break;
@@ -46,12 +36,21 @@ function getInitialTokensForBin(mode, binType, intensity) {
       baseTokens = 5;
   }
 
-  return Math.max(1, Math.floor(baseTokens * intensity));
+  return Math.max(1, Math.floor(baseTokens * Math.sqrt(intensity))); // Adjust scaling
 }
 
 export function refillTokens(histogram) {
   histogram.forEach(bin => {
     bin.tokens = bin.initialTokens;
   });
+  console.log('Tokens refilled:', histogram);
   return histogram;
+}
+
+export function logHistogramState(histogram, mode) {
+  console.log(`Histogram (${mode}):`, histogram.map(bin => ({
+    range: bin.range,
+    tokens: bin.tokens,
+    initialTokens: bin.initialTokens
+  })));
 }

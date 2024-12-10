@@ -1,5 +1,3 @@
-// popup.js
-
 document.addEventListener('DOMContentLoaded', function () {
   const enableToggle = document.getElementById('enableToggle');
   const paddingIntensity = document.getElementById('paddingIntensity');
@@ -7,10 +5,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const dummyPacketsSent = document.getElementById('dummyPacketsSent');
   const realPacketsIntercepted = document.getElementById('realPacketsIntercepted');
-  const currentState = document.getElementById('currentState');
   const timeIdle = document.getElementById('timeIdle');
   const timeBurst = document.getElementById('timeBurst');
   const timeGap = document.getElementById('timeGap');
+  const rateIdle = document.getElementById('rateIdle');
+  const rateBurst = document.getElementById('rateBurst');
+  const rateGap = document.getElementById('rateGap');
   const clearMetricsBtn = document.getElementById('clearMetrics');
 
   // Load stored settings
@@ -43,11 +43,26 @@ document.addEventListener('DOMContentLoaded', function () {
   function updateMetricsDisplay(metrics) {
     dummyPacketsSent.textContent = metrics.dummyPacketsSent || 0;
     realPacketsIntercepted.textContent = metrics.realPacketsIntercepted || 0;
-    //currentState.textContent = metrics.currentState || 'S';
 
     timeIdle.textContent = formatTime(metrics.timeInStates['S'] || 0);
     timeBurst.textContent = formatTime(metrics.timeInStates['B'] || 0);
     timeGap.textContent = formatTime(metrics.timeInStates['G'] || 0);
+
+    // Update dummy packet rates
+    const rates = calculateDummyPacketRates(metrics);
+    rateIdle.textContent = `${rates['S']} packets/s`;
+    rateBurst.textContent = `${rates['B']} packets/s`;
+    rateGap.textContent = `${rates['G']} packets/s`;
+  }
+
+  // Function to calculate dummy packet rates
+  function calculateDummyPacketRates(metrics) {
+    const rates = {};
+    for (const state in metrics.dummyPacketsByState) {
+      const timeSpent = metrics.timeInStates[state] / 1000; // Convert ms to seconds
+      rates[state] = timeSpent > 0 ? (metrics.dummyPacketsByState[state] / timeSpent).toFixed(2) : '0.00';
+    }
+    return rates;
   }
 
   // Function to format time from milliseconds to seconds
@@ -70,6 +85,11 @@ document.addEventListener('DOMContentLoaded', function () {
       metrics: {
         dummyPacketsSent: 0,
         realPacketsIntercepted: 0,
+        dummyPacketsByState: {
+          'S': 0,
+          'B': 0,
+          'G': 0
+        },
         timeInStates: {
           'S': 0,
           'B': 0,

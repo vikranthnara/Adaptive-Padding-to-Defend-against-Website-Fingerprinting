@@ -1,8 +1,5 @@
-// background.js
-
 // Import histograms
-// Note: Use importScripts if necessary, depending on your environment.
-import { initializeHistograms } from './histograms.js';
+import { initializeHistograms, refillTokens } from './histograms.js';
 
 // States
 const STATE_IDLE = 'S';
@@ -26,6 +23,11 @@ let paddingIntensity = 3; // Default intensity
 let metrics = {
   dummyPacketsSent: 0,
   realPacketsIntercepted: 0,
+  dummyPacketsByState: {
+    [STATE_IDLE]: 0,
+    [STATE_BURST]: 0,
+    [STATE_GAP]: 0
+  },
   timeInStates: {
     [STATE_IDLE]: 0,
     [STATE_BURST]: 0,
@@ -36,6 +38,8 @@ let metrics = {
   stateTransitions: []
 };
 
+// Cooldown for state transitions
+let lastTransitionTime = Date.now();
 
 // Initialize histograms based on padding intensity
 function initializeHistogramsBasedOnIntensity() {
@@ -52,7 +56,6 @@ function initializeHistogramsBasedOnIntensity() {
 
 // Initialize extension settings
 function initializeExtension() {
-  // Initialize histograms
   initializeHistogramsBasedOnIntensity();
 }
 
@@ -74,10 +77,9 @@ function initializeMetrics() {
     if (data.metrics) {
       metrics = data.metrics;
     }
-    // Update the last state change time to now
     metrics.lastStateChange = Date.now();
     metrics.currentState = state;
-    saveMetrics(); // Save the updated metrics
+    saveMetrics();
   });
 }
 
@@ -91,55 +93,32 @@ function saveMetrics() {
 
 // Call the initialization function
 initializeMetrics();
-
 loadSettings();
 
-// Logging function
+// Logging function for state transitions
 function logStateTransition(oldState, newState, event) {
-  const timestamp = new Date().toISOString();
-  
-  // Validate states
-  if (![STATE_IDLE, STATE_BURST, STATE_GAP].includes(newState)) {
-    console.error(`Invalid state transition to: ${newState}`);
+  const now = Date.now();
+
+  if (now - lastTransitionTime < 2000 && event !== EVENT_REAL_PACKET) { // Minimum 2 seconds
+    console.warn(`State transition skipped: Too soon since the last transition.`);
     return;
   }
 
-  console.log(`[${timestamp}] State transition: ${oldState} -> ${newState} (Event: ${event})`);
+  lastTransitionTime = now;
+  const timeSpent = now - metrics.lastStateChange;
+  metrics.timeInStates[oldState] += timeSpent;
+  metrics.lastStateChange = now;
+  metrics.currentState = newState;
 
-  // Update metrics atomically
-  chrome.storage.local.get(['metrics', 'stateLog'], function (result) {
-    const logs = result.stateLog || [];
-    const currentMetrics = result.metrics || metrics;
-
-    // Calculate time in state
-    const now = Date.now();
-    const timeSpent = now - currentMetrics.lastStateChange;
-    metrics.timeInStates[oldState] += timeSpent;
-    metrics.lastStateChange = now;
-    metrics.currentState = newState;
-
-    // Update transition logs
-    logs.push({ timestamp, oldState, newState, event });
-
-    // Save both metrics and logs atomically
-    chrome.storage.local.set({
-      metrics: currentMetrics,
-      stateLog: logs.slice(-100)
-    }, () => {
-      // Update local metrics object
-      metrics = {...currentMetrics};
-      console.log('Updated metrics:', metrics);
-    });
-  });
+  console.log(`[${new Date().toISOString()}] State transition: ${oldState} -> ${newState} (Event: ${event})`);
   saveMetrics();
 }
 
 // Listen for messages from popup.js
-chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+chrome.runtime.onMessage.addListener(function (message) {
   if (message.action === 'setExtensionEnabled') {
     extensionEnabled = message.enabled;
     if (!extensionEnabled) {
-      // Disable the extension: clear timers and reset state
       resetDelayTimer();
       state = STATE_IDLE;
       console.log('Extension disabled.');
@@ -155,29 +134,27 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 
 // Listen to outgoing requests
 chrome.webRequest.onBeforeRequest.addListener(
-  handleOutgoingRequest,
-  { urls: ["<all_urls>"] },
-  ["requestBody"]
+    handleOutgoingRequest,
+    { urls: ['<all_urls>'] },
+    ['requestBody']
 );
 
 // Listen to incoming responses
 chrome.webRequest.onCompleted.addListener(
-  handleIncomingResponse,
-  { urls: ["<all_urls>"] }
+    handleIncomingResponse,
+    { urls: ['<all_urls>'] }
 );
 
 // Handle outgoing requests
 function handleOutgoingRequest(details) {
-  if (!extensionEnabled) {
-    return {};
-  }
+  if (!extensionEnabled) return {};
 
   if (details.method !== 'GET' && details.method !== 'POST') {
     return {};
   }
-  console.log('Outgoing request intercepted:', details.url);
+
   metrics.realPacketsIntercepted += 1;
-  saveMetrics(); // Save updated metrics
+  saveMetrics();
 
   if (state === STATE_IDLE) {
     const prevState = state;
@@ -186,7 +163,6 @@ function handleOutgoingRequest(details) {
     resetDelayTimer();
     scheduleNextDelay();
   } else if (state === STATE_BURST) {
-    // Real packet sent
     resetDelayTimer();
     scheduleNextDelay();
   } else if (state === STATE_GAP) {
@@ -197,69 +173,56 @@ function handleOutgoingRequest(details) {
     scheduleNextDelay();
   }
 
-  // Continue the request unmodified
   return {};
 }
 
 // Handle incoming responses
-function handleIncomingResponse(details) {
-  if (!extensionEnabled) {
-    return;
-  }
+function handleIncomingResponse() {
+  if (!extensionEnabled) return;
 
-  if (state === STATE_GAP) {
+  if (state === STATE_GAP || state === STATE_IDLE) {
     const prevState = state;
     state = STATE_BURST;
     logStateTransition(prevState, state, EVENT_INCOMING_PACKET);
     resetDelayTimer();
     scheduleNextDelay();
   }
-  return;
 }
 
 // Schedule the next delay based on the current state
 function scheduleNextDelay() {
-  if (!histograms?.burstHistogram || !extensionEnabled) {
-    return;
-  }
-
-  const MAX_IDLE_DELAY = 7000;
+  const MINIMUM_DELAY = 2000; // Minimum delay in milliseconds
 
   if (state === STATE_BURST) {
-    currentDelay = sampleDelay(histograms.burstHistogram);
+    currentDelay = Math.max(sampleDelay(histograms.burstHistogram), MINIMUM_DELAY);
   } else if (state === STATE_GAP) {
-    currentDelay = sampleDelay(histograms.gapHistogram);
+    currentDelay = Math.max(sampleDelay(histograms.gapHistogram), MINIMUM_DELAY);
   } else if (state === STATE_IDLE) {
-    currentDelay = MAX_IDLE_DELAY; // Force periodic wake from idle
+    currentDelay = 7000; // Idle state has a fixed delay
   }
 
   if (currentDelay === Infinity) {
     const prevState = state;
     state = state === STATE_BURST ? STATE_IDLE : STATE_BURST;
     logStateTransition(prevState, state, 'Infinity bin');
-    currentDelay = state === STATE_IDLE ? MAX_IDLE_DELAY : 2500;
-
+    currentDelay = state === STATE_IDLE ? 7000 : 2500;
   }
+
   delayTimer = setTimeout(onDelayExpire, currentDelay);
   console.log(`Delay scheduled for ${currentDelay} milliseconds.`);
-
 }
 
 // Called when the delay timer expires
 function onDelayExpire() {
-  if (!extensionEnabled) {
-    return;
-  }
+  if (!extensionEnabled) return;
 
   if (state === STATE_BURST) {
-    // Delay expired without real packet; send dummy packet
     sendDummyPacket();
     const prevState = state;
     state = STATE_GAP;
     logStateTransition(prevState, state, EVENT_DELAY_EXPIRE);
     scheduleNextDelay();
   } else if (state === STATE_GAP) {
-    // Send dummy packet
     sendDummyPacket();
     scheduleNextDelay();
   }
@@ -278,18 +241,40 @@ async function sendDummyPacket() {
   if (!extensionEnabled) return;
 
   try {
-    const dummyUrl = chrome.runtime.getURL('dummy.html');
-    await fetch(dummyUrl, {
-      method: 'GET',
-      cache: 'no-cache',
-      credentials: 'omit'
-    });
-    
-    console.log('Dummy packet sent at', new Date().toISOString());
+    const delayBeforeSending = Math.max(currentDelay / 2, 500); // Ensure reasonable delay
+    await new Promise(resolve => setTimeout(resolve, delayBeforeSending));
+    await sendRandomizedDummyPacket();
+
+    // Increment dummy packets count for the current state
+    metrics.dummyPacketsByState[state] += 1;
     metrics.dummyPacketsSent += 1;
     saveMetrics();
   } catch (error) {
-    console.error('Failed to send dummy packet:', error);
+    console.error('Error sending dummy packet:', error);
+  }
+}
+
+// Generate and send randomized dummy packets
+async function sendRandomizedDummyPacket() {
+  if (!extensionEnabled) return;
+
+  try {
+    const dummyUrl = chrome.runtime.getURL('dummy.html');
+    const dummyPayload = generateRandomDummyPayload();
+
+    await fetch(dummyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: dummyPayload }),
+      cache: 'no-cache',
+      credentials: 'omit'
+    });
+
+    console.log('Randomized dummy packet sent:', dummyPayload);
+    metrics.dummyPacketsSent += 1;
+    saveMetrics();
+  } catch (error) {
+    console.error('Failed to send randomized dummy packet:', error);
   }
 }
 
@@ -298,28 +283,31 @@ function sampleDelay(histogram) {
   const totalTokens = histogram.reduce((sum, bin) => sum + bin.tokens, 0);
 
   if (totalTokens === 0) {
-    // Refill histogram
-    refillHistogram(histogram);
+    refillTokens(histogram);
+    console.warn('Histogram tokens depleted. Refilling...');
+    return sampleDelay(histogram);
   }
 
   const rand = Math.random() * totalTokens;
   let cumulative = 0;
 
-  for (let i = 0; i < histogram.length; i++) {
-    cumulative += histogram[i].tokens;
+  for (const bin of histogram) {
+    cumulative += bin.tokens;
+
     if (rand <= cumulative) {
-      histogram[i].tokens--;
-      const delay = getRandomDelayInBin(histogram[i]);
-      if (histogram[i].isInfinityBin) {
+      bin.tokens--;
+
+      if (bin.isInfinityBin) {
+        console.log('Selected an infinity bin.');
         return Infinity;
-      } else {
-        return delay;
       }
+
+      return Math.max(getRandomDelayInBin(bin), 1000); // Ensure a minimum delay of 1 second
     }
   }
 
-  // Fallback
-  return Infinity;
+  console.error('Sample delay failed: No valid bin found.');
+  return 1000; // Default to 1-second delay
 }
 
 // Get a random delay within a bin's range
@@ -329,9 +317,11 @@ function getRandomDelayInBin(bin) {
   return Math.random() * (max - min) + min;
 }
 
-// Refill histogram tokens
-function refillHistogram(histogram) {
-  for (let bin of histogram) {
-    bin.tokens = bin.initialTokens;
-  }
+// Generate a random dummy payload
+function generateRandomDummyPayload() {
+  const payloadSize = Math.floor(Math.random() * 1024);
+  return new Array(payloadSize)
+      .fill(0)
+      .map(() => Math.random().toString(36).charAt(2))
+      .join('');
 }
