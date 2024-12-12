@@ -1,131 +1,112 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <style>
-    body {
-      font-family: 'Arial', sans-serif;
-      background-color: #f4f6f9;
-      margin: 0;
-      padding: 20px;
-      box-sizing: border-box;
-      color: #333;
-      width: 320px;
-    }
+    <title>Adaptive Padding Defense</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 15px;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
 
-    h3 {
-      color: #0078d7;
-      font-size: 22px;
-      text-align: center;
-      margin-bottom: 20px;
-    }
+        .container {
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
 
-    .section {
-      margin-bottom: 20px;
-      padding: 15px;
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    }
+        h3 {
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
 
-    .metric {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      font-size: 14px;
-      padding: 5px;
-      border-bottom: 1px solid #eee;
-    }
+        .settings-group {
+            margin-bottom: 15px;
+        }
 
-    .metric:last-child {
-      border-bottom: none;
-    }
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
 
-    .metric span {
-      font-weight: bold;
-      color: #0078d7;
-    }
+        .intensity-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
-    .section h4 {
-      font-size: 16px;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 5px;
-    }
+        input[type="range"] {
+            flex-grow: 1;
+        }
 
-    .tooltip {
-      font-size: 12px;
-      color: #666;
-      text-align: left;
-      margin-top: 5px;
-      margin-bottom: 10px;
-    }
+        .metric {
+            margin: 10px 0;
+            padding: 8px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
 
-    .button-container {
-      text-align: center;
-      margin-top: 10px;
-    }
+        .metric-value {
+            font-weight: bold;
+            color: #2196F3;
+        }
 
-    button {
-      background: #0078d7;
-      color: #fff;
-      border: none;
-      padding: 10px 15px;
-      font-size: 14px;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 5px rgba(0, 120, 215, 0.3);
-    }
+        .state-metrics {
+            margin-left: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
 
-    button:hover {
-      background: #005a9e;
-      box-shadow: 0 4px 8px rgba(0, 90, 158, 0.4);
-    }
+        button {
+            width: 100%;
+            padding: 8px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
 
-    footer {
-      margin-top: 15px;
-      font-size: 12px;
-      text-align: center;
-      color: #666;
-    }
-  </style>
+        button:hover {
+            background-color: #1976D2;
+        }
+    </style>
 </head>
 <body>
-<h3>Adaptive Padding Defense</h3>
+    <div class="container">
+        <h3>Settings</h3>
+        <div class="settings-group">
+            <div class="toggle-switch">
+                <input type="checkbox" id="enableToggle">
+                <label for="enableToggle">Enable Extension</label>
+            </div>
+            <div class="intensity-control">
+                <label for="paddingIntensity">Padding Intensity:</label>
+                <input type="range" id="paddingIntensity" min="1" max="5" value="3">
+                <span id="intensityValue">3</span>
+            </div>
+        </div>
+    </div>
 
-<div class="section">
-  <h4>Performance Metrics</h4>
-  <div class="metric">Dummy Packets Sent: <span id="dummyPacketsSent">0</span></div>
-  <div class="metric">Real Packets Intercepted: <span id="realPacketsIntercepted">0</span></div>
-</div>
-
-<div class="section">
-  <h4>Time Spent in States</h4>
-  <div class="metric">IDLE: <span id="timeIdle">0.00 s</span></div>
-  <div class="metric">BURST: <span id="timeBurst">0.00 s</span></div>
-  <div class="metric">GAP: <span id="timeGap">0.00 s</span></div>
-</div>
-
-<div class="section">
-  <h4>Dummy Packet Rates</h4>
-  <div class="metric">IDLE: <span id="rateIdle">0.00 packets/s</span></div>
-  <div class="metric">BURST: <span id="rateBurst">0.00 packets/s</span></div>
-  <div class="metric">GAP: <span id="rateGap">0.00 packets/s</span></div>
-</div>
-
-<div class="tooltip">
-  <p><strong>Tip:</strong> The rates reflect how many dummy packets are sent per second during each state (IDLE, BURST, GAP).</p>
-</div>
-
-<div class="button-container">
-  <button id="clearMetrics">Clear Metrics</button>
-</div>
-
-<footer>
-  <p>Extension Version: 1.0</p>
-</footer>
-
-<script src="popup.js"></script>
+    <div class="container">
+        <h3>Performance Metrics</h3>
+        <div class="metric">
+            <div>Total Dummy Packets: <span id="dummyPacketsSent" class="metric-value">0</span></div>
+            <div class="state-metrics">
+                <div>Burst State: <span id="dummyPacketsBurst" class="metric-value">0</span></div>
+                <div>Gap State: <span id="dummyPacketsGap" class="metric-value">0</span></div>
+            </div>
+        </div>
+        <div class="metric">
+            Real Packets Intercepted: <span id="realPacketsIntercepted" class="metric-value">0</span>
+        </div>
+    </div>
+    <script src="popup.js" type="module" defer></script>
 </body>
 </html>

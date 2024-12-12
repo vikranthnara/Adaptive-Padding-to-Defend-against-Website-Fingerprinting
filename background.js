@@ -24,18 +24,12 @@ let metrics = {
   dummyPacketsSent: 0,
   realPacketsIntercepted: 0,
   dummyPacketsByState: {
-    [STATE_IDLE]: 0,
-    [STATE_BURST]: 0,
-    [STATE_GAP]: 0
-  },
-  timeInStates: {
-    [STATE_IDLE]: 0,
-    [STATE_BURST]: 0,
-    [STATE_GAP]: 0
+    ['S']: 0,
+    ['B']: 0,
+    ['G']: 0
   },
   currentState: STATE_IDLE,
   lastStateChange: Date.now(),
-  stateTransitions: []
 };
 
 // Cooldown for state transitions
@@ -77,17 +71,16 @@ function initializeMetrics() {
     if (data.metrics) {
       metrics = data.metrics;
     }
-    metrics.lastStateChange = Date.now();
-    metrics.currentState = state;
     saveMetrics();
   });
 }
 
 function saveMetrics() {
-  chrome.storage.local.set({ metrics }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving metrics:', chrome.runtime.lastError);
-    }
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ metrics }, () => {
+      console.log('Metrics saved:', metrics);
+      resolve();
+    });
   });
 }
 
@@ -97,20 +90,10 @@ loadSettings();
 
 // Logging function for state transitions
 function logStateTransition(oldState, newState, event) {
-  const now = Date.now();
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] State transition: ${oldState} -> ${newState} (Event: ${event})`);
 
-  if (now - lastTransitionTime < 2000 && event !== EVENT_REAL_PACKET) { // Minimum 2 seconds
-    console.warn(`State transition skipped: Too soon since the last transition.`);
-    return;
-  }
-
-  lastTransitionTime = now;
-  const timeSpent = now - metrics.lastStateChange;
-  metrics.timeInStates[oldState] += timeSpent;
-  metrics.lastStateChange = now;
   metrics.currentState = newState;
-
-  console.log(`[${new Date().toISOString()}] State transition: ${oldState} -> ${newState} (Event: ${event})`);
   saveMetrics();
 }
 
@@ -248,7 +231,7 @@ async function sendDummyPacket() {
     // Increment dummy packets count for the current state
     metrics.dummyPacketsByState[state] += 1;
     metrics.dummyPacketsSent += 1;
-    saveMetrics();
+    await saveMetrics();
   } catch (error) {
     console.error('Error sending dummy packet:', error);
   }
@@ -271,8 +254,6 @@ async function sendRandomizedDummyPacket() {
     });
 
     console.log('Randomized dummy packet sent:', dummyPayload);
-    metrics.dummyPacketsSent += 1;
-    saveMetrics();
   } catch (error) {
     console.error('Failed to send randomized dummy packet:', error);
   }
